@@ -15,7 +15,7 @@ This is a Go project that provides a command-line interface to check the git sta
 
     ```bash
     go build .
-    ./repo-index.exe repos.index
+    ./repo-status.exe repos.index
     ```
 
 ### Options
@@ -23,5 +23,5 @@ This is a Go project that provides a command-line interface to check the git sta
 -   `-o <output_file>`: Write the output to a file instead of stdout.
 
     ```bash
-    ./repo-index.exe -o status.log repos.index
+    ./repo-status.exe -o status.log repos.index
     ```
