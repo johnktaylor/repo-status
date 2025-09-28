@@ -1,4 +1,4 @@
-# repo-index
+# repo-status
 
 This is a Go project that provides a command-line interface to check the git status of multiple repositories listed in an index file.
 
