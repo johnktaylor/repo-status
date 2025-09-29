@@ -1,6 +1,6 @@
 # protoworks-repo-status
 
-This is a Go project that provides a command-line interface to check the git status of multiple repositories listed in an index file.
+A command-line tool for managing multiple git repositories. Check status, list repositories, and execute commands across them.
 
 ## Usage
 
@@ -45,7 +45,7 @@ List all repositories and their numerical positions from the index file.
 Execute a command in each repository directory.
 
 ```bash
-./repo-status.exe exec repos.index <command>
+./repo-status.exe exec <index_file> <command>
 ```
 
 **Options**
@@ -54,5 +54,5 @@ Execute a command in each repository directory.
 
     ```bash
     # Run 'git pull' on the 1st and 3rd repositories in the index
-    ./repo-status.exe exec -repos "1,3" repos.index git pull
+    ./repo-status.exe exec -repos "1,3" <index_file> git pull
     ```
