@@ -7,6 +7,8 @@ A command-line tool for managing multiple git repositories. Check status, list r
 1.  Create an index file (e.g., `repos.index`) with a list of paths to your git repositories, one per line.
 2.  Run the program with one of the available commands.
 
+**Note:** For easier use, you can add the `repo-status.exe` executable to your system's PATH. This will allow you to run the `repo-status` command from any directory.
+
 ### Commands
 
 #### Default (git status)
