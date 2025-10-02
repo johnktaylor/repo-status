@@ -73,6 +73,7 @@ repo-status.exe exec <index_file> <command>
 **Options**
 
 -   `-repos <positions>`: A comma-separated list of repository positions to run the command on. If not specified, the command will run on all repositories.
+-   `--dry-run`: Show what commands would be executed, without running them.
 
     ```bash
     # Run 'git pull' on the 1st and 3rd repositories in the index

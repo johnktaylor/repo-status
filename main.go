@@ -23,6 +23,7 @@ func main() {
 	pathCommand := flag.NewFlagSet("path", flag.ExitOnError)
 
 	execRepos := execCommand.String("repos", "", "Comma-separated list of repo positions to run the command on")
+	execDryRun := execCommand.Bool("dry-run", false, "Show what commands would be executed, without running them")
 
 	switch os.Args[1] {
 	case "list":
@@ -99,15 +100,19 @@ func main() {
 		}
 
 		for _, repoPath := range targetRepos {
-			cmd := exec.Command(command[0], command[1:]...)
-			cmd.Dir = repoPath
-			out, err := cmd.CombinedOutput()
+			if *execDryRun {
+				fmt.Printf("[DRY RUN] Would execute '%s' in %s\n", strings.Join(command, " "), repoPath)
+			} else {
+				cmd := exec.Command(command[0], command[1:]...)
+				cmd.Dir = repoPath
+				out, err := cmd.CombinedOutput()
 
-			fmt.Printf("--- Output for %s ---\n", repoPath)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				fmt.Printf("--- Output for %s ---\n", repoPath)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				}
+				fmt.Println(string(out))
 			}
-			fmt.Println(string(out))
 		}
 	default:
 		output := flag.String("o", "", "Output file path")
