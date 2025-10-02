@@ -40,6 +40,26 @@ List all repositories and their numerical positions from the index file.
 ./repo-status.exe list repos.index
 ```
 
+#### `path`
+
+Get the path of a repository at a given index.
+
+```bash
+./repo-status.exe path <index> <index_file>
+```
+
+**Tip:** You can use the output of this command to `cd` into a repository directory.
+
+**PowerShell**
+```powershell
+cd $(./repo-status.exe path 1 repos.index)
+```
+
+**bash**
+```bash
+cd $(./repo-status.exe path 1 repos.index)
+```
+
 #### `exec`
 
 Execute a command in each repository directory.

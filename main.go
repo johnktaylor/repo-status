@@ -20,6 +20,7 @@ func main() {
 
 	listCommand := flag.NewFlagSet("list", flag.ExitOnError)
 	execCommand := flag.NewFlagSet("exec", flag.ExitOnError)
+	pathCommand := flag.NewFlagSet("path", flag.ExitOnError)
 
 	execRepos := execCommand.String("repos", "", "Comma-separated list of repo positions to run the command on")
 
@@ -39,6 +40,32 @@ func main() {
 		for i, repo := range repos {
 			fmt.Printf("%d: %s\n", i+1, repo)
 		}
+	case "path":
+		pathCommand.Parse(os.Args[2:])
+		if len(pathCommand.Args()) != 2 {
+			fmt.Fprintf(os.Stderr, "Usage: %s path <index> <index_file>\n", os.Args[0])
+			os.Exit(1)
+		}
+		indexStr := pathCommand.Args()[0]
+		index, err := strconv.Atoi(indexStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid index: %v\n", err)
+			os.Exit(1)
+		}
+
+		indexFile := pathCommand.Args()[1]
+		repos, err := readRepos(indexFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading index file: %v\n", err)
+			os.Exit(1)
+		}
+
+		if index < 1 || index > len(repos) {
+			fmt.Fprintf(os.Stderr, "Index out of range\n")
+			os.Exit(1)
+		}
+
+		fmt.Print(repos[index-1])
 	case "exec":
 		execCommand.Parse(os.Args[2:])
 		if len(execCommand.Args()) < 2 {
@@ -111,12 +138,12 @@ func main() {
 			os.Exit(1)
 		}
 
-		for _, repoPath := range repos {
+		for i, repoPath := range repos {
 			cmd := exec.Command("git", "status")
 			cmd.Dir = repoPath
 			out, err := cmd.CombinedOutput()
 
-			fmt.Fprintf(writer, "--- Git status for %s ---\n", repoPath)
+			fmt.Fprintf(writer, "--- Git status for %d: %s ---\n", i+1, repoPath)
 			if err != nil {
 				fmt.Fprintf(writer, "Error: %v\n", err)
 			}
@@ -173,6 +200,7 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "Usage: %s <command> [options] <index_file>\n", os.Args[0])
 	fmt.Fprintln(os.Stderr, "Commands:")
 	fmt.Fprintln(os.Stderr, "  list: List repositories and their positions")
+	fmt.Fprintln(os.Stderr, "  path: Get the path of a repository at a given index")
 	fmt.Fprintln(os.Stderr, "  exec: Execute a command in repository directories")
 	fmt.Fprintln(os.Stderr, "  (default): Show git status for all repositories")
 }
