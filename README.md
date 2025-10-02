@@ -23,7 +23,7 @@ Or, build the executable first:
 
 ```bash
 go build .
-./repo-status.exe repos.index
+repo-status.exe repos.index
 ```
 
 **Options**
@@ -31,7 +31,7 @@ go build .
 -   `-o <output_file>`: Write the output to a file instead of stdout.
 
     ```bash
-    ./repo-status.exe -o status.log repos.index
+    repo-status.exe -o status.log repos.index
     ```
 
 #### `list`
@@ -39,7 +39,7 @@ go build .
 List all repositories and their numerical positions from the index file.
 
 ```bash
-./repo-status.exe list repos.index
+repo-status.exe list repos.index
 ```
 
 #### `path`
@@ -47,19 +47,19 @@ List all repositories and their numerical positions from the index file.
 Get the path of a repository at a given index.
 
 ```bash
-./repo-status.exe path <index> <index_file>
+repo-status.exe path <index> <index_file>
 ```
 
 **Tip:** You can use the output of this command to `cd` into a repository directory.
 
 **PowerShell**
 ```powershell
-cd $(./repo-status.exe path 1 repos.index)
+cd $(repo-status.exe path 1 repos.index)
 ```
 
 **bash**
 ```bash
-cd $(./repo-status.exe path 1 repos.index)
+cd $(repo-status.exe path 1 repos.index)
 ```
 
 #### `exec`
@@ -67,7 +67,7 @@ cd $(./repo-status.exe path 1 repos.index)
 Execute a command in each repository directory.
 
 ```bash
-./repo-status.exe exec <index_file> <command>
+repo-status.exe exec <index_file> <command>
 ```
 
 **Options**
@@ -76,5 +76,5 @@ Execute a command in each repository directory.
 
     ```bash
     # Run 'git pull' on the 1st and 3rd repositories in the index
-    ./repo-status.exe exec -repos "1,3" <index_file> git pull
+    repo-status.exe exec -repos "1,3" <index_file> git pull
     ```
