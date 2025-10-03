@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -25,6 +26,7 @@ func main() {
 
 	switch os.Args[1] {
 	case "list":
+		listAsJson := listCommand.Bool("json", false, "Output as JSON")
 		listCommand.Parse(os.Args[2:])
 		if len(listCommand.Args()) != 1 {
 			fmt.Fprintf(os.Stderr, "Usage: %s list <config_file>\n", os.Args[0])
@@ -36,10 +38,38 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
 		}
-		for i, repo := range config.Repos {
-			fmt.Printf("%d: %s (%s)\n", i+1, repo.Name, repo.Location)
+
+		if *listAsJson {
+			type RepoWithIndex struct {
+				Index        int    `json:"index"`
+				Name         string `json:"name"`
+				Location     string `json:"location"`
+				LocationType string `json:"locationtype"`
+			}
+
+			var reposWithIndex []RepoWithIndex
+			for i, repo := range config.Repos {
+				reposWithIndex = append(reposWithIndex, RepoWithIndex{
+					Index:        i + 1,
+					Name:         repo.Name,
+					Location:     repo.Location,
+					LocationType: repo.LocationType,
+				})
+			}
+
+			jsonOutput, err := json.MarshalIndent(reposWithIndex, "", "  ")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error marshalling JSON: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Print(string(jsonOutput))
+		} else {
+			for i, repo := range config.Repos {
+				fmt.Printf("%d: %s (%s) (%s)\n", i+1, repo.Name, repo.Location, repo.LocationType)
+			}
 		}
 	case "path":
+		pathAsJson := pathCommand.Bool("json", false, "Output as JSON")
 		pathCommand.Parse(os.Args[2:])
 		if len(pathCommand.Args()) != 2 {
 			fmt.Fprintf(os.Stderr, "Usage: %s path <name_or_index> <config_file>\n", os.Args[0])
@@ -58,9 +88,25 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Print(repo.Location)
+
+		if *pathAsJson {
+			type PathResult struct {
+				Path string `json:"path"`
+			}
+
+			result := PathResult{Path: repo.Location}
+			jsonOutput, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error marshalling JSON: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Print(string(jsonOutput))
+		} else {
+			fmt.Print(repo.Location)
+		}
 
 	case "exec":
+		execAsJson := execCommand.Bool("json", false, "Output as JSON")
 		execCommand.Parse(os.Args[2:])
 		if len(execCommand.Args()) < 2 {
 			fmt.Fprintf(os.Stderr, "Usage: %s exec [options] <config_file> <command>\n", os.Args[0])
@@ -91,27 +137,74 @@ func main() {
 			targetRepos = config.Repos
 		}
 
-		for _, repo := range targetRepos {
-			if repo.LocationType != "local" {
-				fmt.Printf("Skipping non-local repository: %s\n", repo.Name)
-				continue
+		if *execAsJson {
+			type ExecResult struct {
+				Name   string `json:"name"`
+				Output string `json:"output"`
+				Error  string `json:"error,omitempty"`
 			}
-			if *execDryRun {
-				fmt.Printf("[DRY RUN] Would execute '%s' in %s\n", strings.Join(command, " "), repo.Location)
-			} else {
-				cmd := exec.Command(command[0], command[1:]...)
-				cmd.Dir = repo.Location
-				out, err := cmd.CombinedOutput()
 
-				fmt.Printf("--- Output for %s ---\n", repo.Name)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			var results []ExecResult
+
+			for _, repo := range targetRepos {
+				if repo.LocationType != "local" {
+					results = append(results, ExecResult{
+						Name:   repo.Name,
+						Output: "Skipped (non-local)",
+					})
+					continue
 				}
-				fmt.Println(string(out))
+				if *execDryRun {
+					results = append(results, ExecResult{
+						Name:   repo.Name,
+						Output: fmt.Sprintf("[DRY RUN] Would execute '%s' in %s", strings.Join(command, " "), repo.Location),
+					})
+				} else {
+					cmd := exec.Command(command[0], command[1:]...)
+					cmd.Dir = repo.Location
+					out, err := cmd.CombinedOutput()
+
+					result := ExecResult{
+						Name:   repo.Name,
+						Output: string(out),
+					}
+					if err != nil {
+						result.Error = err.Error()
+					}
+					results = append(results, result)
+				}
+			}
+
+			jsonOutput, err := json.MarshalIndent(results, "", "  ")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error marshalling JSON: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Print(string(jsonOutput))
+		} else {
+			for _, repo := range targetRepos {
+				if repo.LocationType != "local" {
+					fmt.Printf("Skipping non-local repository: %s\n", repo.Name)
+					continue
+				}
+				if *execDryRun {
+					fmt.Printf("[DRY RUN] Would execute '%s' in %s\n", strings.Join(command, " "), repo.Location)
+				} else {
+					cmd := exec.Command(command[0], command[1:]...)
+					cmd.Dir = repo.Location
+					out, err := cmd.CombinedOutput()
+
+					fmt.Printf("--- Output for %s ---\n", repo.Name)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					}
+					fmt.Println(string(out))
+				}
 			}
 		}
 	default:
 		output := flag.String("o", "", "Output file path")
+		asJson := flag.Bool("json", false, "Output as JSON")
 		flag.Parse()
 
 		if len(flag.Args()) == 0 {
@@ -139,20 +232,60 @@ func main() {
 			os.Exit(1)
 		}
 
-		for _, repo := range config.Repos {
-			if repo.LocationType != "local" {
-				fmt.Fprintf(writer, "--- Skipping non-local repository: %s ---\n", repo.Name)
-				continue
+		if *asJson {
+			type RepoStatus struct {
+				Name   string `json:"name"`
+				Status string `json:"status"`
+				Error  string `json:"error,omitempty"`
 			}
-			cmd := exec.Command("git", "status")
-			cmd.Dir = repo.Location
-			out, err := cmd.CombinedOutput()
 
-			fmt.Fprintf(writer, "--- Git status for %s ---\n", repo.Name)
-			if err != nil {
-				fmt.Fprintf(writer, "Error: %v\n", err)
+			var statuses []RepoStatus
+
+			for _, repo := range config.Repos {
+				if repo.LocationType != "local" {
+					statuses = append(statuses, RepoStatus{
+						Name:   repo.Name,
+						Status: "Skipped (non-local)",
+					})
+					continue
+				}
+				cmd := exec.Command("git", "status")
+				cmd.Dir = repo.Location
+				out, err := cmd.CombinedOutput()
+
+				status := RepoStatus{
+					Name:   repo.Name,
+					Status: string(out),
+				}
+				if err != nil {
+					status.Error = err.Error()
+				}
+				statuses = append(statuses, status)
 			}
-			fmt.Fprintln(writer, string(out))
+
+			jsonOutput, err := json.MarshalIndent(statuses, "", "  ")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error marshalling JSON: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Fprint(writer, string(jsonOutput))
+
+		} else {
+			for _, repo := range config.Repos {
+				if repo.LocationType != "local" {
+					fmt.Fprintf(writer, "--- Skipping non-local repository: %s ---\n", repo.Name)
+					continue
+				}
+				cmd := exec.Command("git", "status")
+				cmd.Dir = repo.Location
+				out, err := cmd.CombinedOutput()
+
+				fmt.Fprintf(writer, "--- Git status for %s ---\n", repo.Name)
+				if err != nil {
+					fmt.Fprintf(writer, "Error: %v\n", err)
+				}
+				fmt.Fprintln(writer, string(out))
+			}
 		}
 	}
 }
