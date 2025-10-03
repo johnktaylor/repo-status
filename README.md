@@ -29,9 +29,10 @@ repo-status.exe repos.yaml
 **Options**
 
 -   `-o <output_file>`: Write the output to a file instead of stdout.
+-   `--json`: Output status information as a JSON object.
 
     ```bash
-    repo-status.exe -o status.log repos.yaml
+    repo-status.exe -o status.log --json repos.yaml
     ```
 
 #### `list`
@@ -42,6 +43,10 @@ List all repositories and their numerical positions from the config file.
 repo-status.exe list repos.yaml
 ```
 
+**Options**
+
+-   `--json`: Output the list of repositories as a JSON object.
+
 #### `path`
 
 Get the path of a repository at a given index or name.
@@ -49,6 +54,10 @@ Get the path of a repository at a given index or name.
 ```bash
 repo-status.exe path <index_or_name> <config_file>
 ```
+
+**Options**
+
+-   `--json`: Output the path as a JSON object.
 
 **Tip:** You can use the output of this command to `cd` into a repository directory.
 
@@ -74,6 +83,7 @@ repo-status.exe exec <config_file> <command>
 
 -   `-repos <positions_or_names>`: A comma-separated list of repository positions or names to run the command on. If not specified, the command will run on all repositories.
 -   `--dry-run`: Show what commands would be executed, without running them.
+-   `--json`: Output the results of the execution as a JSON object.
 
     ```bash
     # Run 'git pull' on the 1st and 'my-repo' repositories in the config
