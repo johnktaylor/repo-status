@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -22,92 +20,90 @@ func main() {
 	execCommand := flag.NewFlagSet("exec", flag.ExitOnError)
 	pathCommand := flag.NewFlagSet("path", flag.ExitOnError)
 
-	execRepos := execCommand.String("repos", "", "Comma-separated list of repo positions to run the command on")
+	execRepos := execCommand.String("repos", "", "Comma-separated list of repo positions or names to run the command on")
 	execDryRun := execCommand.Bool("dry-run", false, "Show what commands would be executed, without running them")
 
 	switch os.Args[1] {
 	case "list":
 		listCommand.Parse(os.Args[2:])
 		if len(listCommand.Args()) != 1 {
-			fmt.Fprintf(os.Stderr, "Usage: %s list <index_file>\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "Usage: %s list <config_file>\n", os.Args[0])
 			os.Exit(1)
 		}
-		indexFile := listCommand.Args()[0]
-		repos, err := readRepos(indexFile)
+		configFile := listCommand.Args()[0]
+		config, err := readConfig(configFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading index file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
 		}
-		for i, repo := range repos {
-			fmt.Printf("%d: %s\n", i+1, repo)
+		for i, repo := range config.Repos {
+			fmt.Printf("%d: %s (%s)\n", i+1, repo.Name, repo.Location)
 		}
 	case "path":
 		pathCommand.Parse(os.Args[2:])
 		if len(pathCommand.Args()) != 2 {
-			fmt.Fprintf(os.Stderr, "Usage: %s path <index> <index_file>\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "Usage: %s path <name_or_index> <config_file>\n", os.Args[0])
 			os.Exit(1)
 		}
-		indexStr := pathCommand.Args()[0]
-		index, err := strconv.Atoi(indexStr)
+		repoIdentifier := pathCommand.Args()[0]
+		configFile := pathCommand.Args()[1]
+		config, err := readConfig(configFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Invalid index: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
 		}
 
-		indexFile := pathCommand.Args()[1]
-		repos, err := readRepos(indexFile)
+		repo, err := findRepo(config, repoIdentifier)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading index file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+		fmt.Print(repo.Location)
 
-		if index < 1 || index > len(repos) {
-			fmt.Fprintf(os.Stderr, "Index out of range\n")
-			os.Exit(1)
-		}
-
-		fmt.Print(repos[index-1])
 	case "exec":
 		execCommand.Parse(os.Args[2:])
 		if len(execCommand.Args()) < 2 {
-			fmt.Fprintf(os.Stderr, "Usage: %s exec [options] <index_file> <command>\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "Usage: %s exec [options] <config_file> <command>\n", os.Args[0])
 			execCommand.PrintDefaults()
 			os.Exit(1)
 		}
-		indexFile := execCommand.Args()[0]
+		configFile := execCommand.Args()[0]
 		command := execCommand.Args()[1:]
 
-		repos, err := readRepos(indexFile)
+		config, err := readConfig(configFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading index file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
 		}
 
-		var targetRepos []string
+		var targetRepos []Repo
 		if *execRepos != "" {
-			positions, err := parseRepoPositions(*execRepos)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Invalid repo positions: %v\n", err)
-				os.Exit(1)
-			}
-			for _, pos := range positions {
-				if pos > 0 && pos <= len(repos) {
-					targetRepos = append(targetRepos, repos[pos-1])
+			repoIdentifiers := strings.Split(*execRepos, ",")
+			for _, identifier := range repoIdentifiers {
+				repo, err := findRepo(config, strings.TrimSpace(identifier))
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					continue
 				}
+				targetRepos = append(targetRepos, *repo)
 			}
 		} else {
-			targetRepos = repos
+			targetRepos = config.Repos
 		}
 
-		for _, repoPath := range targetRepos {
+		for _, repo := range targetRepos {
+			if repo.LocationType != "local" {
+				fmt.Printf("Skipping non-local repository: %s\n", repo.Name)
+				continue
+			}
 			if *execDryRun {
-				fmt.Printf("[DRY RUN] Would execute '%s' in %s\n", strings.Join(command, " "), repoPath)
+				fmt.Printf("[DRY RUN] Would execute '%s' in %s\n", strings.Join(command, " "), repo.Location)
 			} else {
 				cmd := exec.Command(command[0], command[1:]...)
-				cmd.Dir = repoPath
+				cmd.Dir = repo.Location
 				out, err := cmd.CombinedOutput()
 
-				fmt.Printf("--- Output for %s ---\n", repoPath)
+				fmt.Printf("--- Output for %s ---\n", repo.Name)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				}
@@ -122,7 +118,7 @@ func main() {
 			printUsage()
 			os.Exit(1)
 		}
-		indexFile := flag.Args()[0]
+		configFile := flag.Args()[0]
 
 		var writer io.Writer
 		if *output != "" {
@@ -137,18 +133,22 @@ func main() {
 			writer = os.Stdout
 		}
 
-		repos, err := readRepos(indexFile)
+		config, err := readConfig(configFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading index file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
 		}
 
-		for i, repoPath := range repos {
+		for _, repo := range config.Repos {
+			if repo.LocationType != "local" {
+				fmt.Fprintf(writer, "--- Skipping non-local repository: %s ---\n", repo.Name)
+				continue
+			}
 			cmd := exec.Command("git", "status")
-			cmd.Dir = repoPath
+			cmd.Dir = repo.Location
 			out, err := cmd.CombinedOutput()
 
-			fmt.Fprintf(writer, "--- Git status for %d: %s ---\n", i+1, repoPath)
+			fmt.Fprintf(writer, "--- Git status for %s ---\n", repo.Name)
 			if err != nil {
 				fmt.Fprintf(writer, "Error: %v\n", err)
 			}
@@ -157,55 +157,30 @@ func main() {
 	}
 }
 
-func readRepos(indexFile string) ([]string, error) {
-	file, err := os.Open(indexFile)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	var repos []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		repoPath := scanner.Text()
-		if repoPath == "" {
-			continue
+func findRepo(config *Config, identifier string) (*Repo, error) {
+	// Try to parse as index first
+	if index, err := strconv.Atoi(identifier); err == nil {
+		if index < 1 || index > len(config.Repos) {
+			return nil, fmt.Errorf("index out of range: %d", index)
 		}
+		return &config.Repos[index-1], nil
+	}
 
-		if !filepath.IsAbs(repoPath) {
-			repoPath, err = filepath.Abs(filepath.Join(filepath.Dir(indexFile), repoPath))
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error getting absolute path for %s: %v\n", repoPath, err)
-				continue
-			}
+	// Otherwise, search by name
+	for _, repo := range config.Repos {
+		if repo.Name == identifier {
+			return &repo, nil
 		}
-		repos = append(repos, repoPath)
 	}
 
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-	return repos, nil
-}
-
-func parseRepoPositions(posStr string) ([]int, error) {
-	var positions []int
-	parts := strings.Split(posStr, ",")
-	for _, part := range parts {
-		pos, err := strconv.Atoi(strings.TrimSpace(part))
-		if err != nil {
-			return nil, err
-		}
-		positions = append(positions, pos)
-	}
-	return positions, nil
+	return nil, fmt.Errorf("repository not found: %s", identifier)
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, "Usage: %s <command> [options] <index_file>\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage: %s <command> [options] <config_file>\n", os.Args[0])
 	fmt.Fprintln(os.Stderr, "Commands:")
 	fmt.Fprintln(os.Stderr, "  list: List repositories and their positions")
-	fmt.Fprintln(os.Stderr, "  path: Get the path of a repository at a given index")
+	fmt.Fprintln(os.Stderr, "  path: Get the path of a repository at a given index or name")
 	fmt.Fprintln(os.Stderr, "  exec: Execute a command in repository directories")
 	fmt.Fprintln(os.Stderr, "  (default): Show git status for all repositories")
 }

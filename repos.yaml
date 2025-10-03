@@ -1,0 +1,8 @@
+repositories:
+  - name: protoworks-repo-status
+    location: C:\Users\jktde\Development\protoworksutils\protoworks-repo-status
+  - name: another-repo
+    location: /path/to/another/repo
+  - name: remote-repo
+    location: git@github.com:user/repo.git
+    locationtype: remote
