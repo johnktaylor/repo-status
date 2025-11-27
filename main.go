@@ -1,6 +1,8 @@
+
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,6 +11,16 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+)
+
+// Color constants
+const (
+	ColorReset  = "\033[0m"
+	ColorRed    = "\033[31m"
+	ColorGreen  = "\033[32m"
+	ColorYellow = "\033[33m"
+	ColorBlue   = "\033[34m"
 )
 
 func main() {
@@ -23,6 +35,7 @@ func main() {
 
 	execRepos := execCommand.String("repos", "", "Comma-separated list of repo positions or names to run the command on")
 	execDryRun := execCommand.Bool("dry-run", false, "Show what commands would be executed, without running them")
+	execAsync := execCommand.Bool("async", false, "Run commands in parallel")
 
 	switch os.Args[1] {
 	case "list":
@@ -138,73 +151,136 @@ func main() {
 		}
 
 		if *execAsJson {
+			// JSON output doesn't support streaming/async well in this structure, so we collect results.
+			// Async execution for JSON output is still useful for speed.
 			type ExecResult struct {
 				Name   string `json:"name"`
 				Output string `json:"output"`
 				Error  string `json:"error,omitempty"`
 			}
 
-			var results []ExecResult
+			results := make([]ExecResult, len(targetRepos))
+			var wg sync.WaitGroup
 
-			for _, repo := range targetRepos {
+			for i, repo := range targetRepos {
 				if repo.LocationType != "local" {
-					results = append(results, ExecResult{
+					results[i] = ExecResult{
 						Name:   repo.Name,
 						Output: "Skipped (non-local)",
-					})
+					}
 					continue
 				}
+
 				if *execDryRun {
-					results = append(results, ExecResult{
+					results[i] = ExecResult{
 						Name:   repo.Name,
 						Output: fmt.Sprintf("[DRY RUN] Would execute '%s' in %s", strings.Join(command, " "), repo.Location),
-					})
-				} else {
+					}
+					continue
+				}
+
+				execute := func(idx int, r Repo) {
 					cmd := exec.Command(command[0], command[1:]...)
-					cmd.Dir = repo.Location
+					cmd.Dir = r.Location
 					out, err := cmd.CombinedOutput()
 
 					result := ExecResult{
-						Name:   repo.Name,
+						Name:   r.Name,
 						Output: string(out),
 					}
 					if err != nil {
 						result.Error = err.Error()
 					}
-					results = append(results, result)
+					results[idx] = result
+				}
+
+				if *execAsync {
+					wg.Add(1)
+					go func(idx int, r Repo) {
+						defer wg.Done()
+						execute(idx, r)
+					}(i, repo)
+				} else {
+					execute(i, repo)
 				}
 			}
 
-			jsonOutput, err := json.MarshalIndent(results, "", "  ")
+			if *execAsync {
+				wg.Wait()
+			}
+
+			// Filter out empty results (if any logic skipped index population, though current logic covers all)
+			var finalResults []ExecResult
+			for _, res := range results {
+				if res.Name != "" {
+					finalResults = append(finalResults, res)
+				}
+			}
+
+			jsonOutput, err := json.MarshalIndent(finalResults, "", "  ")
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error marshalling JSON: %v\n", err)
 				os.Exit(1)
 			}
 			fmt.Print(string(jsonOutput))
+
 		} else {
+			// Text output
+			var wg sync.WaitGroup
+			// Mutex to prevent interleaved output
+			var outputMutex sync.Mutex
+
 			for _, repo := range targetRepos {
 				if repo.LocationType != "local" {
 					fmt.Printf("Skipping non-local repository: %s\n", repo.Name)
 					continue
 				}
+
 				if *execDryRun {
 					fmt.Printf("[DRY RUN] Would execute '%s' in %s\n", strings.Join(command, " "), repo.Location)
-				} else {
+					continue
+				}
+
+				execute := func(r Repo) {
 					cmd := exec.Command(command[0], command[1:]...)
-					cmd.Dir = repo.Location
+					cmd.Dir = r.Location
 					out, err := cmd.CombinedOutput()
 
-					fmt.Printf("--- Output for %s ---\n", repo.Name)
+					// Buffer output to print atomically
+					var buf bytes.Buffer
+					fmt.Fprintf(&buf, "--- Output for %s ---\n", r.Name)
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+						fmt.Fprintf(&buf, "Error: %v\n", err)
 					}
-					fmt.Println(string(out))
+					fmt.Fprintln(&buf, string(out))
+
+					if *execAsync {
+						outputMutex.Lock()
+						defer outputMutex.Unlock()
+					}
+					fmt.Print(buf.String())
 				}
+
+				if *execAsync {
+					wg.Add(1)
+					go func(r Repo) {
+						defer wg.Done()
+						execute(r)
+					}(repo)
+				} else {
+					execute(repo)
+				}
+			}
+
+			if *execAsync {
+				wg.Wait()
 			}
 		}
 	default:
 		output := flag.String("o", "", "Output file path")
 		asJson := flag.Bool("json", false, "Output as JSON")
+		shortStatus := flag.Bool("short", false, "Use short status format")
+		dirtyOnly := flag.Bool("dirty", false, "Only show repositories with changes")
 		flag.Parse()
 
 		if len(flag.Args()) == 0 {
@@ -249,13 +325,24 @@ func main() {
 					})
 					continue
 				}
-				cmd := exec.Command("git", "status")
+				
+				args := []string{"status"}
+				if *shortStatus {
+					args = append(args, "-s")
+				}
+				
+				cmd := exec.Command("git", args...)
 				cmd.Dir = repo.Location
 				out, err := cmd.CombinedOutput()
 
+				statusStr := string(out)
+				if *dirtyOnly && strings.TrimSpace(statusStr) == "" {
+					continue
+				}
+
 				status := RepoStatus{
 					Name:   repo.Name,
-					Status: string(out),
+					Status: statusStr,
 				}
 				if err != nil {
 					status.Error = err.Error()
@@ -276,15 +363,43 @@ func main() {
 					fmt.Fprintf(writer, "--- Skipping non-local repository: %s ---\n", repo.Name)
 					continue
 				}
-				cmd := exec.Command("git", "status")
+				
+				args := []string{"status"}
+				if *shortStatus {
+					args = append(args, "-s")
+				}
+
+				cmd := exec.Command("git", args...)
 				cmd.Dir = repo.Location
 				out, err := cmd.CombinedOutput()
+				
+				outputStr := string(out)
+				isClean := strings.TrimSpace(outputStr) == ""
 
-				fmt.Fprintf(writer, "--- Git status for %s ---\n", repo.Name)
+				if *dirtyOnly && isClean {
+					continue
+				}
+
+				// Colorize header
+				headerColor := ColorBlue
+				if !isClean {
+					headerColor = ColorYellow
+				}
+				if err != nil {
+					headerColor = ColorRed
+				}
+
+				// Only use colors if writing to stdout
+				if writer == os.Stdout {
+					fmt.Fprintf(writer, "%s--- Git status for %s ---%s\n", headerColor, repo.Name, ColorReset)
+				} else {
+					fmt.Fprintf(writer, "--- Git status for %s ---\n", repo.Name)
+				}
+				
 				if err != nil {
 					fmt.Fprintf(writer, "Error: %v\n", err)
 				}
-				fmt.Fprintln(writer, string(out))
+				fmt.Fprintln(writer, outputStr)
 			}
 		}
 	}
@@ -316,4 +431,9 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  path: Get the path of a repository at a given index or name")
 	fmt.Fprintln(os.Stderr, "  exec: Execute a command in repository directories")
 	fmt.Fprintln(os.Stderr, "  (default): Show git status for all repositories")
+	fmt.Fprintln(os.Stderr, "\nDefault Command Options:")
+	fmt.Fprintln(os.Stderr, "  --short: Use short status format")
+	fmt.Fprintln(os.Stderr, "  --dirty: Only show repositories with changes")
+	fmt.Fprintln(os.Stderr, "  -o <file>: Output to file")
+	fmt.Fprintln(os.Stderr, "  --json: Output as JSON")
 }

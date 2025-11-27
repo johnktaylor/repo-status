@@ -5,6 +5,7 @@ A command-line tool for managing multiple git repositories. Check status, list r
 ## Usage
 
 1.  Create a YAML configuration file (e.g., `repos.yaml`) with a list of your git repositories. Each repository should have a `name`, `location`, and optional `locationtype` (defaulting to `local`).
+    *   **Note:** Relative paths in `location` are resolved relative to the directory containing the configuration file.
 2.  Run the program with one of the available commands.
 
 **Note:** For easier use, you can add the `repo-status.exe` executable to your system's PATH. This will allow you to run the `repo-status` command from any directory.
@@ -28,11 +29,14 @@ repo-status.exe repos.yaml
 
 **Options**
 
+-   `--short`: Use short status format (`git status -s`).
+-   `--dirty`: Only show repositories with changes.
 -   `-o <output_file>`: Write the output to a file instead of stdout.
 -   `--json`: Output status information as a JSON object.
 
     ```bash
-    repo-status.exe -o status.log --json repos.yaml
+    # Show concise status only for dirty repos
+    repo-status.exe --short --dirty repos.yaml
     ```
 
 #### `list`
@@ -82,10 +86,11 @@ repo-status.exe exec <config_file> <command>
 **Options**
 
 -   `-repos <positions_or_names>`: A comma-separated list of repository positions or names to run the command on. If not specified, the command will run on all repositories.
+-   `--async`: Run the command in parallel across all repositories.
 -   `--dry-run`: Show what commands would be executed, without running them.
 -   `--json`: Output the results of the execution as a JSON object.
 
     ```bash
-    # Run 'git pull' on the 1st and 'my-repo' repositories in the config
-    repo-status.exe exec -repos "1,my-repo" <config_file> git pull
+    # Run 'git fetch' on all repositories in parallel
+    repo-status.exe exec --async repos.yaml git fetch
     ```

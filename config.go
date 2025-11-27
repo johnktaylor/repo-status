@@ -37,17 +37,25 @@ func readConfig(configFile string) (*Config, error) {
 
 	// Check for duplicate names
 	names := make(map[string]bool)
-	for _, repo := range config.Repos {
+	configDir := filepath.Dir(absPath)
+
+	for i := range config.Repos {
+		repo := &config.Repos[i]
 		if names[repo.Name] {
 			return nil, fmt.Errorf("duplicate repository name found: %s", repo.Name)
 		}
 		names[repo.Name] = true
-	}
 
-	// Set default location type
-	for i := range config.Repos {
-		if config.Repos[i].LocationType == "" {
-			config.Repos[i].LocationType = "local"
+		// Set default location type
+		if repo.LocationType == "" {
+			repo.LocationType = "local"
+		}
+
+		// Resolve relative paths for local repos
+		if repo.LocationType == "local" {
+			if !filepath.IsAbs(repo.Location) {
+				repo.Location = filepath.Join(configDir, repo.Location)
+			}
 		}
 	}
 
