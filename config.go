@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 type Repo struct {
@@ -24,7 +24,7 @@ func readConfig(configFile string) (*Config, error) {
 		return nil, fmt.Errorf("error getting absolute path for %s: %w", configFile, err)
 	}
 
-	yamlFile, err := ioutil.ReadFile(absPath)
+	yamlFile, err := os.ReadFile(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("error reading config file: %w", err)
 	}
