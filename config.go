@@ -48,6 +48,9 @@ func readConfig(configFile string) (*Config, error) {
 	// Validate repository identities and normalize fields needed by subsequent commands.
 	for i := range config.Repos {
 		repo := &config.Repos[i]
+		if strings.TrimSpace(repo.Name) == "" {
+			return nil, fmt.Errorf("repository has an empty name")
+		}
 		if names[repo.Name] {
 			return nil, fmt.Errorf("duplicate repository name found: %s", repo.Name)
 		}

@@ -26,6 +26,24 @@ func TestReadConfigRejectsEmptyLocation(t *testing.T) {
 	}
 }
 
+// TestReadConfigRejectsEmptyName verifies that blank repository names are rejected.
+// It receives the Go test context and reports a test failure if readConfig accepts an empty name.
+func TestReadConfigRejectsEmptyName(t *testing.T) {
+	configFile := filepath.Join(t.TempDir(), "repos.yaml")
+	config := "repositories:\n  - name: '   '\n    location: ./repo\n"
+	if err := os.WriteFile(configFile, []byte(config), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, err := readConfig(configFile)
+	if err == nil {
+		t.Fatal("readConfig() succeeded with an empty repository name")
+	}
+	if !strings.Contains(err.Error(), "empty name") {
+		t.Fatalf("readConfig() error = %q, want empty-name error", err)
+	}
+}
+
 // TestReadConfigRejectsLocationType verifies that unsupported remote configuration is rejected.
 // It receives the Go test context and reports a test failure if readConfig accepts a location type.
 func TestReadConfigRejectsLocationType(t *testing.T) {

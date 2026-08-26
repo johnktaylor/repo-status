@@ -310,17 +310,17 @@ func main() {
 			os.Exit(1)
 		}
 
-		var writer io.Writer
+		// Buffer the full report so the final write and file close errors can be reported reliably.
+		var report bytes.Buffer
+		writer := io.Writer(&report)
+		var outputFile *os.File
 		if *output != "" {
 			f, err := os.Create(*output)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error creating output file: %v\n", err)
 				os.Exit(1)
 			}
-			defer f.Close()
-			writer = f
-		} else {
-			writer = os.Stdout
+			outputFile = f
 		}
 
 		// Preserve a failing exit status after reporting every repository's status.
@@ -416,7 +416,7 @@ func main() {
 				}
 
 				// Only use colors when standard output is an interactive terminal.
-				if writer == os.Stdout && isTerminal(os.Stdout) {
+				if outputFile == nil && isTerminal(os.Stdout) {
 					fmt.Fprintf(writer, "%s--- Git status for %s ---%s\n", headerColor, repo.Name, ColorReset)
 				} else {
 					fmt.Fprintf(writer, "--- Git status for %s ---\n", repo.Name)
@@ -426,6 +426,24 @@ func main() {
 					fmt.Fprintf(writer, "Error: %v\n", err)
 				}
 				fmt.Fprintln(writer, outputStr)
+			}
+		}
+		// Flush the complete report and surface write or close failures to the caller.
+		destination := io.Writer(os.Stdout)
+		if outputFile != nil {
+			destination = outputFile
+		}
+		if _, err := io.Copy(destination, &report); err != nil {
+			if outputFile != nil {
+				_ = outputFile.Close()
+			}
+			fmt.Fprintf(os.Stderr, "Error writing status output: %v\n", err)
+			os.Exit(1)
+		}
+		if outputFile != nil {
+			if err := outputFile.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error closing status output: %v\n", err)
+				os.Exit(1)
 			}
 		}
 		if hadStatusFailure {
