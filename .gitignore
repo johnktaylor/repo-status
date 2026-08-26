@@ -1,0 +1,6 @@
+# Executables
+*.exe
+
+# Configuration files
+*.yaml
+*.yml
