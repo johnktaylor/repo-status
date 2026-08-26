@@ -1,0 +1,6 @@
+# Copy this file to repos.yaml and replace the example values with your local repositories.
+# Relative paths are resolved from the directory containing repos.yaml.
+# Add one additional "- name" entry under repositories for every repository you want to manage.
+repositories:
+  - name: my-local-repository
+    location: C:\path\to\repository
