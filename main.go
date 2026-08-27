@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -504,6 +505,7 @@ func findRepo(config *Config, identifier string) (*Repo, error) {
 // printUsage writes command syntax and supported options to standard error.
 // It takes no inputs and returns no value; callers use it before exiting on invalid invocation.
 func printUsage() {
+	programName := filepath.Base(os.Args[0])
 	fmt.Fprintf(os.Stderr, `Usage:
   %[1]s [--short] [--dirty] [-o <output_file>] [--json] <config_file>
   %[1]s list [--json] <config_file>
@@ -539,5 +541,5 @@ Examples:
   %[1]s exec repos.yaml git status
   %[1]s exec --async repos.yaml git fetch
   %[1]s exec --repos 1,api repos.yaml git pull
-`, os.Args[0])
+`, programName)
 }
