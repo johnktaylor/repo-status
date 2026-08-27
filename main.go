@@ -504,15 +504,40 @@ func findRepo(config *Config, identifier string) (*Repo, error) {
 // printUsage writes command syntax and supported options to standard error.
 // It takes no inputs and returns no value; callers use it before exiting on invalid invocation.
 func printUsage() {
-	fmt.Fprintf(os.Stderr, "Usage: %s <command> [options] <config_file>\n", os.Args[0])
-	fmt.Fprintln(os.Stderr, "Commands:")
-	fmt.Fprintln(os.Stderr, "  list: List repositories and their positions")
-	fmt.Fprintln(os.Stderr, "  path: Get the path of a repository at a given index or name")
-	fmt.Fprintln(os.Stderr, "  exec: Execute a command in repository directories")
-	fmt.Fprintln(os.Stderr, "  (default): Show git status for all repositories")
-	fmt.Fprintln(os.Stderr, "\nDefault Command Options:")
-	fmt.Fprintln(os.Stderr, "  --short: Use short status format")
-	fmt.Fprintln(os.Stderr, "  --dirty: Only show repositories with changes")
-	fmt.Fprintln(os.Stderr, "  -o <file>: Output to file")
-	fmt.Fprintln(os.Stderr, "  --json: Output as JSON")
+	fmt.Fprintf(os.Stderr, `Usage:
+  %[1]s [--short] [--dirty] [-o <output_file>] [--json] <config_file>
+  %[1]s list [--json] <config_file>
+  %[1]s path [--json] <name_or_index> <config_file>
+  %[1]s exec [--repos <indexes_or_names>] [--async] [--dry-run] [--json] <config_file> <command> [command_arguments...]
+
+Options must appear before positional arguments.
+
+Commands:
+  (default)  Show Git status for every configured repository.
+  list       List repositories and their one-based indexes.
+  path       Print a repository path by its one-based index or exact name.
+  exec       Run a command in each selected repository directory.
+
+Default status options:
+  --short              Use Git's short status format.
+  --dirty              Show only repositories with uncommitted or untracked changes.
+  -o <output_file>     Write the report to a file.
+  --json               Emit JSON output.
+
+Exec options:
+  --repos <selectors>  Comma-separated indexes or names, for example: 1,api
+  --async              Run commands in parallel.
+  --dry-run            Show commands without running them.
+  --json               Emit JSON output.
+
+Examples:
+  %[1]s repos.yaml
+  %[1]s --short --dirty repos.yaml
+  %[1]s list --json repos.yaml
+  %[1]s path 1 repos.yaml
+  %[1]s path api repos.yaml
+  %[1]s exec repos.yaml git status
+  %[1]s exec --async repos.yaml git fetch
+  %[1]s exec --repos 1,api repos.yaml git pull
+`, os.Args[0])
 }
