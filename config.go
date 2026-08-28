@@ -19,9 +19,9 @@ type Config struct {
 	Repos []Repo `yaml:"repositories"`
 }
 
-// readConfig loads and validates repository configuration from a YAML file.
+// loadAndValidateConfig loads and validates repository configuration from a YAML file.
 // It accepts a config-file path and returns a Config with local paths resolved relative to that file, or an error for unreadable or invalid input.
-func readConfig(configFile string) (*Config, error) {
+func loadAndValidateConfig(configFile string) (*Config, error) {
 	absPath, err := filepath.Abs(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("error getting absolute path for %s: %w", configFile, err)
@@ -41,7 +41,7 @@ func readConfig(configFile string) (*Config, error) {
 		return nil, fmt.Errorf("error unmarshalling yaml: %w", err)
 	}
 
-	// Check for duplicate names
+	// Track names while validating so repository selectors remain unambiguous.
 	names := make(map[string]bool)
 	configDir := filepath.Dir(absPath)
 

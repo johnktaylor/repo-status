@@ -44,20 +44,20 @@ func main() {
 	// Dispatch to the requested subcommand; an unrecognized first argument uses the default status view.
 	switch os.Args[1] {
 	case "list":
-		listAsJson := listCommand.Bool("json", false, "Output as JSON")
+		listAsJSON := listCommand.Bool("json", false, "Output as JSON")
 		listCommand.Parse(os.Args[2:])
 		if len(listCommand.Args()) != 1 {
 			fmt.Fprintf(os.Stderr, "Usage: %s list <config_file>\n", os.Args[0])
 			os.Exit(1)
 		}
 		configFile := listCommand.Args()[0]
-		config, err := readConfig(configFile)
+		config, err := loadAndValidateConfig(configFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
 		}
 
-		if *listAsJson {
+		if *listAsJSON {
 			type RepoWithIndex struct {
 				Index    int    `json:"index"`
 				Name     string `json:"name"`
@@ -87,7 +87,7 @@ func main() {
 			}
 		}
 	case "path":
-		pathAsJson := pathCommand.Bool("json", false, "Output as JSON")
+		pathAsJSON := pathCommand.Bool("json", false, "Output as JSON")
 		pathCommand.Parse(os.Args[2:])
 		if len(pathCommand.Args()) != 2 {
 			fmt.Fprintf(os.Stderr, "Usage: %s path <name_or_index> <config_file>\n", os.Args[0])
@@ -95,7 +95,7 @@ func main() {
 		}
 		repoIdentifier := pathCommand.Args()[0]
 		configFile := pathCommand.Args()[1]
-		config, err := readConfig(configFile)
+		config, err := loadAndValidateConfig(configFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
@@ -107,7 +107,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		if *pathAsJson {
+		if *pathAsJSON {
 			type PathResult struct {
 				Path string `json:"path"`
 			}
@@ -124,7 +124,7 @@ func main() {
 		}
 
 	case "exec":
-		execAsJson := execCommand.Bool("json", false, "Output as JSON")
+		execAsJSON := execCommand.Bool("json", false, "Output as JSON")
 		execCommand.Parse(os.Args[2:])
 		if len(execCommand.Args()) < 2 {
 			fmt.Fprintf(os.Stderr, "Usage: %s exec [options] <config_file> <command>\n", os.Args[0])
@@ -134,7 +134,7 @@ func main() {
 		configFile := execCommand.Args()[0]
 		command := execCommand.Args()[1:]
 
-		config, err := readConfig(configFile)
+		config, err := loadAndValidateConfig(configFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
@@ -163,7 +163,7 @@ func main() {
 			targetRepos = config.Repos
 		}
 
-		if *execAsJson {
+		if *execAsJSON {
 			// JSON output doesn't support streaming/async well in this structure, so we collect results.
 			// Async execution for JSON output is still useful for speed.
 			type ExecResult struct {
@@ -206,6 +206,7 @@ func main() {
 				if *execAsync {
 					// Run independent repository commands concurrently while preserving their result indexes.
 					wg.Add(1)
+					// Execute the indexed repository command and signal completion.
 					go func(idx int, r Repo) {
 						defer wg.Done()
 						execute(idx, r)
@@ -276,6 +277,7 @@ func main() {
 				if *execAsync {
 					// Start independent repository commands concurrently.
 					wg.Add(1)
+					// Execute the repository command and signal completion.
 					go func(r Repo) {
 						defer wg.Done()
 						execute(r)
@@ -293,8 +295,8 @@ func main() {
 			}
 		}
 	default:
-		output := flag.String("o", "", "Output file path")
-		asJson := flag.Bool("json", false, "Output as JSON")
+		outputPath := flag.String("o", "", "Output file path")
+		asJSON := flag.Bool("json", false, "Output as JSON")
 		shortStatus := flag.Bool("short", false, "Use short status format")
 		dirtyOnly := flag.Bool("dirty", false, "Only show repositories with changes")
 		flag.Parse()
@@ -305,7 +307,7 @@ func main() {
 		}
 		configFile := flag.Args()[0]
 
-		config, err := readConfig(configFile)
+		config, err := loadAndValidateConfig(configFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
@@ -315,18 +317,18 @@ func main() {
 		var report bytes.Buffer
 		writer := io.Writer(&report)
 		var outputFile *os.File
-		if *output != "" {
-			f, err := os.Create(*output)
+		if *outputPath != "" {
+			createdOutputFile, err := os.Create(*outputPath)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error creating output file: %v\n", err)
 				os.Exit(1)
 			}
-			outputFile = f
+			outputFile = createdOutputFile
 		}
 
 		// Preserve a failing exit status after reporting every repository's status.
 		hadStatusFailure := false
-		if *asJson {
+		if *asJSON {
 			type RepoStatus struct {
 				Name   string `json:"name"`
 				Status string `json:"status"`
@@ -342,6 +344,7 @@ func main() {
 					args = append(args, "-s")
 				}
 
+				// Capture Git status for the structured response.
 				cmd := exec.Command("git", args...)
 				cmd.Dir = repo.Location
 				out, err := cmd.CombinedOutput()
@@ -384,6 +387,7 @@ func main() {
 					args = append(args, "-s")
 				}
 
+				// Capture Git status for the human-readable report.
 				cmd := exec.Command("git", args...)
 				cmd.Dir = repo.Location
 				out, err := cmd.CombinedOutput()
@@ -467,6 +471,7 @@ func isTerminal(file *os.File) bool {
 // isRepoDirty checks Git's porcelain status for uncommitted or untracked changes.
 // It accepts a local repository directory and returns whether it is dirty, or an error when Git cannot inspect the directory.
 func isRepoDirty(location string) (bool, error) {
+	// Use porcelain output because it is empty for a clean working tree.
 	cmd := exec.Command("git", "status", "--porcelain")
 	cmd.Dir = location
 	out, err := cmd.CombinedOutput()
@@ -480,7 +485,7 @@ func isRepoDirty(location string) (bool, error) {
 // findRepo resolves a repository in config by one-based index or exact name.
 // It accepts a non-nil Config and selector string, and returns the matching Repo or an error when no valid match exists.
 func findRepo(config *Config, identifier string) (*Repo, error) {
-	// Try to parse as index first
+	// Prefer a valid one-based index before falling back to exact name lookup.
 	if index, err := strconv.Atoi(identifier); err == nil {
 		if index >= 1 && index <= len(config.Repos) {
 			return &config.Repos[index-1], nil
