@@ -1,6 +1,27 @@
 # Copy this file to repos.yaml and replace the example values with your local repositories.
 # Relative paths are resolved from the directory containing repos.yaml.
 # Add one additional "- name" entry under repositories for every repository you want to manage.
+#
+# Validation rules enforced by repo-status:
+#   - The path must be a regular file; a directory, device, or pipe is rejected.
+#   - The file must contain exactly one YAML document; a second document after "---" is rejected.
+#   - Only the "repositories" key is allowed at the top level, and each entry allows only
+#     "name" and "location"; unknown or misspelled fields are rejected.
+#   - At least one repository must be defined; an empty or comments-only file is rejected.
+#   - At most 1,000 repositories may be defined, and the file must be at most 1 MiB
+#     (1,048,576 bytes). Reading is capped, so a larger or growing file is rejected.
+#   - Names and locations must not be blank; surrounding whitespace is trimmed on load.
+#   - Names must be unique, compared case-insensitively, so "api" and "API" conflict.
+#   - Names must not contain a comma (it separates --repos selectors), a control character
+#     such as a tab, newline, or escape, or a Unicode bidirectional formatting character.
+#   - Locations are not checked on load, and only local folders are supported; a missing
+#     folder or one that is not a Git repository is reported later by Git.
+#
+# Windows locations must be complete: "C:repos" (drive-relative) and "\repos" (drive-rooted)
+# are rejected, as is an incomplete UNC path such as "\\server". Use a full path such as
+# "C:\path\to\repository", a relative path, or a complete UNC path such as "\\server\share\repo".
+# Alternate data stream paths such as "repos.yaml:stream" are rejected for this file, for every
+# location, and for the -o output destination.
 repositories:
   - name: my-local-repository
     location: C:\path\to\repository
